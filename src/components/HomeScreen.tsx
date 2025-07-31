@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,23 +13,58 @@ import {
   CheckCircle,
   Clock
 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import communityHero from '@/assets/community-hero.png';
 
 interface HomeScreenProps {
   onNavigate: (screen: string) => void;
 }
 
+interface Report {
+  id: string;
+  issue_type: string;
+  title: string;
+  location_address: string;
+  status: string;
+  created_at: string;
+}
+
 const HomeScreen = ({ onNavigate }: HomeScreenProps) => {
-  const recentReports = [
-    { id: 1, type: 'Injured', location: 'MG Road', status: 'pending', time: '2h ago' },
-    { id: 2, type: 'Lost', location: 'Brigade Road', status: 'resolved', time: '1d ago' },
-    { id: 3, type: 'Feeding', location: 'Koramangala', status: 'in-progress', time: '3h ago' }
-  ];
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchRecentReports();
+  }, []);
+
+  const fetchRecentReports = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reports')
+        .select('id, issue_type, title, location_address, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) {
+        console.error('Error fetching reports:', error);
+      } else {
+        setReports(data || []);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return 'bg-warning text-warning-foreground';
-      case 'in-progress': return 'bg-primary text-primary-foreground';
+      case 'in_progress': return 'bg-primary text-primary-foreground';
       case 'resolved': return 'bg-success text-success-foreground';
       default: return 'bg-muted text-muted-foreground';
     }
@@ -37,9 +73,31 @@ const HomeScreen = ({ onNavigate }: HomeScreenProps) => {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending': return <Clock className="w-3 h-3" />;
-      case 'in-progress': return <AlertTriangle className="w-3 h-3" />;
+      case 'in_progress': return <AlertTriangle className="w-3 h-3" />;
       case 'resolved': return <CheckCircle className="w-3 h-3" />;
       default: return <Clock className="w-3 h-3" />;
+    }
+  };
+
+  const getTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return 'Just now';
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    const diffInDays = Math.floor(diffInHours / 24);
+    return `${diffInDays}d ago`;
+  };
+
+  const handleSignOut = async () => {
+    const { error } = await signOut();
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to sign out",
+        variant: "destructive"
+      });
     }
   };
 
@@ -51,15 +109,30 @@ const HomeScreen = ({ onNavigate }: HomeScreenProps) => {
           <div>
             <h1 className="text-2xl font-bold">Good morning! 👋</h1>
             <p className="text-primary-foreground/80">Ready to help some dogs today?</p>
+            {user && (
+              <p className="text-sm text-primary-foreground/60 mt-1">
+                {user.email}
+              </p>
+            )}
           </div>
-          <Button 
-            variant="secondary" 
-            size="sm"
-            onClick={() => onNavigate('alerts')}
-            className="bg-white/20 hover:bg-white/30 border-white/30"
-          >
-            <Bell className="w-4 h-4" />
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="secondary" 
+              size="sm"
+              onClick={() => onNavigate('alerts')}
+              className="bg-white/20 hover:bg-white/30 border-white/30"
+            >
+              <Bell className="w-4 h-4" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={handleSignOut}
+              className="text-primary-foreground hover:bg-white/20"
+            >
+              Sign Out
+            </Button>
+          </div>
         </div>
 
         <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
@@ -123,31 +196,53 @@ const HomeScreen = ({ onNavigate }: HomeScreenProps) => {
       {/* Recent Activity */}
       <div className="px-6 mb-6">
         <h2 className="text-lg font-semibold text-foreground mb-4">Recent Reports</h2>
-        <div className="space-y-3">
-          {recentReports.map((report) => (
-            <Card key={report.id} className="cursor-pointer hover:shadow-sm transition-all">
-              <CardContent className="p-4">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center mb-1">
-                      <span className="font-medium text-sm">{report.type} Dog</span>
-                      <Badge 
-                        className={`ml-2 text-xs ${getStatusColor(report.status)}`}
-                      >
-                        {getStatusIcon(report.status)}
-                        <span className="ml-1 capitalize">{report.status}</span>
-                      </Badge>
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="p-4">
+                  <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                  <div className="h-3 bg-muted rounded w-1/2"></div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {reports.length === 0 ? (
+              <Card>
+                <CardContent className="p-4 text-center">
+                  <p className="text-muted-foreground">No reports yet. Be the first to help!</p>
+                </CardContent>
+              </Card>
+            ) : (
+              reports.map((report) => (
+                <Card key={report.id} className="cursor-pointer hover:shadow-sm transition-all">
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center mb-1">
+                          <span className="font-medium text-sm capitalize">{report.issue_type} Dog</span>
+                          <Badge 
+                            className={`ml-2 text-xs ${getStatusColor(report.status)}`}
+                          >
+                            {getStatusIcon(report.status)}
+                            <span className="ml-1 capitalize">{report.status.replace('_', ' ')}</span>
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-foreground mb-1">{report.title}</p>
+                        <p className="text-xs text-muted-foreground flex items-center">
+                          <MapPin className="w-3 h-3 mr-1" />
+                          {report.location_address} • {getTimeAgo(report.created_at)}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground flex items-center">
-                      <MapPin className="w-3 h-3 mr-1" />
-                      {report.location} • {report.time}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
       {/* Community Hero Image */}
