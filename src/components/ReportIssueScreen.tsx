@@ -12,6 +12,9 @@ import {
   Upload,
   CheckCircle
 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ReportIssueScreenProps {
   onBack: () => void;
@@ -23,7 +26,7 @@ const issueTypes = [
   { id: 'lost', label: 'Lost', color: 'bg-warning text-warning-foreground' },
   { id: 'feeding', label: 'Feeding', color: 'bg-primary text-primary-foreground' },
   { id: 'aggressive', label: 'Aggressive', color: 'bg-destructive text-destructive-foreground' },
-  { id: 'abused', label: 'Abused', color: 'bg-destructive text-destructive-foreground' },
+  { id: 'abuse', label: 'Abuse', color: 'bg-destructive text-destructive-foreground' },
   { id: 'puppies', label: 'Puppies', color: 'bg-accent text-accent-foreground' },
   { id: 'adoption', label: 'Adoption', color: 'bg-success text-success-foreground' },
   { id: 'other', label: 'Other', color: 'bg-muted text-muted-foreground' }
@@ -31,10 +34,15 @@ const issueTypes = [
 
 const ReportIssueScreen = ({ onBack, onSubmit }: ReportIssueScreenProps) => {
   const [selectedType, setSelectedType] = useState<string>('');
+  const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [image, setImage] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { user } = useAuth();
+  const { toast } = useToast();
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -43,28 +51,129 @@ const ReportIssueScreen = ({ onBack, onSubmit }: ReportIssueScreenProps) => {
     }
   };
 
+  const uploadImage = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `reports/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('images')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        console.error('Error uploading image:', uploadError);
+        return null;
+      }
+
+      const { data } = supabase.storage
+        .from('images')
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      return null;
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!selectedType || !location) return;
+    if (!selectedType || !location || !user || !title) return;
+    if (latitude === null || longitude === null) {
+      toast({
+        title: "Location Required",
+        description: "Please get your current location or enter coordinates.",
+        variant: "destructive"
+      });
+      return;
+    }
 
     setIsSubmitting(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
-      onSubmit();
-    }, 2000);
+
+    try {
+      let imageUrl = null;
+      if (image) {
+        imageUrl = await uploadImage(image);
+      }
+
+      const { error } = await supabase
+        .from('reports')
+        .insert({
+          user_id: user.id,
+          issue_type: selectedType as any,
+          title,
+          description: notes,
+          latitude,
+          longitude,
+          location_address: location,
+          image_url: imageUrl,
+          observed_at: new Date().toISOString()
+        });
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: "Failed to submit report. Please try again.",
+          variant: "destructive"
+        });
+        console.error('Error submitting report:', error);
+      } else {
+        // Add to timeline
+        await supabase
+          .from('report_timeline')
+          .insert({
+            report_id: null, // Will be set by the report ID from the above insert
+            user_id: user.id,
+            action: 'Report submitted',
+            notes: `${selectedType} report created`
+          });
+
+        toast({
+          title: "Report Submitted! ✅",
+          description: "Local volunteers have been notified. We'll keep you updated.",
+        });
+        onSubmit();
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred.",
+        variant: "destructive"
+      });
+    }
+
+    setIsSubmitting(false);
   };
 
   const getCurrentLocation = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          // Simulate reverse geocoding
-          setLocation('Current Location - Koramangala, Bangalore');
+          setLatitude(position.coords.latitude);
+          setLongitude(position.coords.longitude);
+          // Simple reverse geocoding simulation
+          setLocation(`Current Location - ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`);
+          toast({
+            title: "Location Retrieved",
+            description: "Your current location has been set.",
+          });
         },
         (error) => {
           console.error('Error getting location:', error);
+          toast({
+            title: "Location Error",
+            description: "Unable to get your location. Please enter manually.",
+            variant: "destructive"
+          });
         }
       );
+    } else {
+      toast({
+        title: "Location Not Supported",
+        description: "Your browser doesn't support location services.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -109,6 +218,20 @@ const ReportIssueScreen = ({ onBack, onSubmit }: ReportIssueScreenProps) => {
                 </Badge>
               ))}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Title */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Brief Title</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Input
+              placeholder="e.g., Injured dog near park gate"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
           </CardContent>
         </Card>
 
@@ -205,7 +328,7 @@ const ReportIssueScreen = ({ onBack, onSubmit }: ReportIssueScreenProps) => {
         <Button 
           onClick={handleSubmit}
           className="w-full h-12 text-lg"
-          disabled={!selectedType || !location || isSubmitting}
+          disabled={!selectedType || !location || !title || isSubmitting}
         >
           {isSubmitting ? 'Submitting Report...' : 'Submit Report'}
         </Button>

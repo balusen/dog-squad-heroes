@@ -3,7 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Smartphone, ArrowRight } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Mail, Lock, User, ArrowRight } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 import logoImage from '@/assets/dogsquad-logo.png';
 
 interface SignInScreenProps {
@@ -11,31 +14,55 @@ interface SignInScreenProps {
 }
 
 const SignInScreen = ({ onSignIn }: SignInScreenProps) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState('');
-  const [showOtp, setShowOtp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const { signIn, signUp } = useAuth();
+  const { toast } = useToast();
 
-  const handleSendOtp = async () => {
-    if (phone.length < 10) return;
+  const handleSignIn = async () => {
+    if (!email || !password) return;
     
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
-      setShowOtp(true);
-    }, 1500);
+    const { error } = await signIn(email, password);
+    
+    if (error) {
+      toast({
+        title: "Sign In Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } else {
+      toast({
+        title: "Welcome back! 🐕",
+        description: "You're now signed in to DogSquad.",
+      });
+      onSignIn();
+    }
+    setIsLoading(false);
   };
 
-  const handleVerifyOtp = async () => {
-    if (otp.length < 6) return;
+  const handleSignUp = async () => {
+    if (!email || !password || !fullName) return;
     
     setIsLoading(true);
-    // Simulate verification
-    setTimeout(() => {
-      setIsLoading(false);
-      onSignIn();
-    }, 1500);
+    const { error } = await signUp(email, password, { full_name: fullName, phone });
+    
+    if (error) {
+      toast({
+        title: "Sign Up Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } else {
+      toast({
+        title: "Account Created! 🎉",
+        description: "Please check your email to verify your account.",
+      });
+    }
+    setIsLoading(false);
   };
 
   return (
@@ -53,80 +80,107 @@ const SignInScreen = ({ onSignIn }: SignInScreenProps) => {
 
         <Card className="animate-fade-in">
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <Smartphone className="w-5 h-5 mr-2 text-primary" />
-              {showOtp ? 'Verify OTP' : 'Sign In'}
-            </CardTitle>
+            <CardTitle>Get Started</CardTitle>
             <CardDescription>
-              {showOtp 
-                ? `We've sent a verification code to +91 ${phone}`
-                : 'Enter your mobile number to get started'
-              }
+              Sign in to your account or create a new one
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="space-y-4">
-            {!showOtp ? (
-              <>
+          <CardContent>
+            <Tabs defaultValue="signin" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="signin">Sign In</TabsTrigger>
+                <TabsTrigger value="signup">Sign Up</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="signin" className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Mobile Number</Label>
-                  <div className="flex">
-                    <div className="bg-muted px-3 py-2 rounded-l-md border border-r-0 border-input text-sm">
-                      +91
-                    </div>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="9876543210"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="rounded-l-none"
-                      maxLength={10}
-                    />
-                  </div>
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="your@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                 </div>
                 
-                <Button 
-                  onClick={handleSendOtp}
-                  className="w-full"
-                  disabled={phone.length < 10 || isLoading}
-                >
-                  {isLoading ? 'Sending...' : 'Send OTP'}
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </>
-            ) : (
-              <>
                 <div className="space-y-2">
-                  <Label htmlFor="otp">Enter OTP</Label>
+                  <Label htmlFor="password">Password</Label>
                   <Input
-                    id="otp"
-                    type="number"
-                    placeholder="123456"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    maxLength={6}
+                    id="password"
+                    type="password"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                   />
                 </div>
                 
                 <Button 
-                  onClick={handleVerifyOtp}
+                  onClick={handleSignIn}
                   className="w-full"
-                  disabled={otp.length < 6 || isLoading}
+                  disabled={!email || !password || isLoading}
                 >
-                  {isLoading ? 'Verifying...' : 'Verify & Continue'}
+                  {isLoading ? 'Signing In...' : 'Sign In'}
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
-
+              </TabsContent>
+              
+              <TabsContent value="signup" className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    type="text"
+                    placeholder="Your full name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone (Optional)</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="+91 9876543210"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="signupEmail">Email</Label>
+                  <Input
+                    id="signupEmail"
+                    type="email"
+                    placeholder="your@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="signupPassword">Password</Label>
+                  <Input
+                    id="signupPassword"
+                    type="password"
+                    placeholder="Create a password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+                
                 <Button 
-                  variant="ghost" 
-                  onClick={() => setShowOtp(false)}
+                  onClick={handleSignUp}
                   className="w-full"
+                  disabled={!email || !password || !fullName || isLoading}
                 >
-                  Change Number
+                  {isLoading ? 'Creating Account...' : 'Create Account'}
+                  <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
-              </>
-            )}
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 

@@ -1,17 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import SplashScreen from '@/components/SplashScreen';
 import OnboardingCarousel from '@/components/OnboardingCarousel';
 import SignInScreen from '@/components/SignInScreen';
 import HomeScreen from '@/components/HomeScreen';
 import ReportIssueScreen from '@/components/ReportIssueScreen';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 type AppScreen = 'splash' | 'onboarding' | 'signin' | 'home' | 'report' | 'my-reports' | 'squad' | 'alerts';
 
 const Index = () => {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>('splash');
-  const [isSignedIn, setIsSignedIn] = useState(false);
   const { toast } = useToast();
+  const { user, loading } = useAuth();
+
+  // Auto-redirect authenticated users to home
+  useEffect(() => {
+    if (!loading && user && currentScreen === 'signin') {
+      setCurrentScreen('home');
+    }
+  }, [user, loading, currentScreen]);
 
   const handleSplashComplete = () => {
     setCurrentScreen('onboarding');
@@ -22,7 +30,6 @@ const Index = () => {
   };
 
   const handleSignIn = () => {
-    setIsSignedIn(true);
     setCurrentScreen('home');
     toast({
       title: "Welcome to DogSquad! 🐕",
